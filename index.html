@@ -1,0 +1,537 @@
+//🟢MULTIR ANNOTATED
+
+1 SC DEPOSIT PROFIT TO WALLET 0 CONFIRM
+
+A. USDCE
+B IN ARB
+
+//🟢 1. HTML Document Declaration and Language
+<!DOCTYPE html>
+<html lang="en">
+
+//🟢 2. Head Section: Metadata and Script Dependencies
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VX 22R</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+
+  //🟢 3. CSS Styling for Layout and Design
+  <style>
+    body {
+      background-color: #0a0;
+      color: white;
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 8px 12px;
+      border: 1px solid #444;
+      text-align: center;
+    }
+    .profitable {
+      background-color: #00ff00;
+      color: black;
+      font-weight: bold;
+    }
+    #log {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #444;
+      margin-top: 10px;
+      padding: 10px;
+      background: #111;
+      font-size: 0.9em;
+    }
+    button {
+      padding: 8px 16px;
+      margin: 5px;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #555;
+    }
+    .control-group {
+      margin: 10px 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 15px;
+    }
+    .control-group label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .profit-display {
+      font-size: 1.2em;
+      font-weight: bold;
+      margin: 10px 0;
+      padding: 8px;
+      background: #333;
+      border-radius: 4px;
+    }
+    .token-balance {
+      margin: 5px 0;
+    }
+  </style>
+</head>
+
+//🟢 4. Body Section with Main Interface Elements
+<body>
+  <h1>DODO Flash Loan Arbitrage</h1>
+
+  //🟢 5. Wallet and Balance Displays
+  <p><strong>Wallet:</strong> <span id="wallet">-</span></p>
+  <p><strong>Wallet USDC Balance:</strong> <span id="walletBalance">-</span></p>
+  <p><strong>Contract USDC Balance:</strong> <span id="contractBalance">-</span></p>
+  <div id="tokenBalances"></div>
+
+  //🟢 6. Profit Display Area
+  <div class="profit-display">
+    <strong>Accumulated Profit:</strong> <span id="accumulatedProfit">0.00</span>
+  </div>
+
+  //🟢 7. Main Control Buttons
+  <div class="control-group">
+    <button id="connectWallet">Connect Wallet</button>
+    <button id="scanNow">Start Scan</button>
+    <button id="withdrawUSDC">Withdraw USDC</button>
+  </div>
+
+  //🟢 8. Trading Toggles and Flags
+  <div class="control-group">
+    <label><input type="checkbox" id="autoTradeToggle"> Auto Trade</label>
+    <label><input type="checkbox" id="backgroundTradeToggle"> Auto Trade in Background</label>
+    <label><input type="checkbox" id="positiveBalanceToggle" checked> Only trade if contract balance increases</label>
+    <label><input type="checkbox" id="depositToContractToggle" checked disabled> Deposit to contract after each trade</label>
+  </div>
+
+  //🟢 9. Trade Configuration Inputs
+  <div class="control-group">
+    <label>Min Profit %: <input type="number" id="minProfitPct" value="0.2" step="0.1" min="0.1">%</label>
+    <label>Trade Amount: <input type="number" id="tradeAmount" value="10" min="1"> USDC</label>
+    <label>Slippage %: <input type="number" id="slippagePct" value="0" step="0.1" min="0">%</label>
+    <label>Scan Interval (sec): <input type="number" id="scanInterval" value="10" min="1"></label>
+    <label>Batch Count: <input type="number" id="batchCount" value="1" min="1" max="100"></label>
+  </div>
+
+  //🟢 10. Token Withdrawal Section
+  <div class="control-group">
+    <label>Withdraw Token Address: <input type="text" id="withdrawTokenAddress" placeholder="0x..." size="42"></label>
+    <button id="withdrawToken">Withdraw Token</button>
+  </div>
+
+  //🟢 11. Results Table
+  <table id="resultTable">
+    <thead>
+      <tr>
+        <th>Token</th>
+        <th>Buy Router</th>
+        <th>Sell Router</th>
+        <th>Buy Price</th>
+        <th>Sell Price</th>
+        <th>Profit $</th>
+        <th>Profit %</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="results"></tbody>
+  </table>
+
+  //🟢 12. Log Panel
+  <div id="log"></div>
+
+  //🟢 13. JavaScript Starts: Setup and ABI
+  <script>
+    let provider, signer, contract, scanIntervalId;
+    const contractAddress = "0x98FA2A393Bf5C297FE29E160B244b560a61d9976";
+    const contractABI = [
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "buyRouter",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "sellRouter",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amountIn",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			},
+			{
+				"internalType": "string",
+				"name": "flashLoanProvider",
+				"type": "string"
+			}
+		],
+		"name": "executeArbitrage",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "asset",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "premium",
+				"type": "uint256"
+			},
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			},
+			{
+				"internalType": "bytes",
+				"name": "params",
+				"type": "bytes"
+			}
+		],
+		"name": "executeOperation",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_aavePool",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "_usdc",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "_aaveProvider",
+				"type": "address"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "newOwner",
+				"type": "address"
+			}
+		],
+		"name": "updateOwner",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "withdrawProfits",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "tokenAddress",
+				"type": "address"
+			}
+		],
+		"name": "withdrawToken",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "AAVE_ADDRESS_PROVIDER",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "AAVE_POOL",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getContractBalance",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "USDC",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+];
+
+    //🟢 14. Token List
+    const tokens = {
+      WETH: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+      WBTC: "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6",
+      DAI: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+      SHIB: "0x6f8A06447ff6fcf75A5fCdb3f8c4BAb2da4fC0D0",
+      UNI: "0xb33EaAd8d922B1083446DC23f610c2567fB5180f"
+    };
+
+    //🟢 15. Function: Arbitrage Execution
+    window.performArbitrage = async function(tokenAddr, tokenSymbol, buyPrice, sellPrice, profitUsd, profitPct) {
+      try {
+        const amount = ethers.utils.parseUnits(document.getElementById("tradeAmount").value, 6);
+        const tx = await contract.executeArbitrage(
+          "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", // QuickSwap
+          "0x1b02da8cb0d097eb8d57a175b88c7d8b47997506", // SushiSwap         
+          "0xC0788A3aD43d79aa53B09c2EaCc313A787d1d607",// ApeSwap
+          "0x546C79662E028B661dFB4767664d0273184E4dD1", //KyberSwap
+          tokenAddr,
+          amount,
+          false,
+          "DODO",
+          { gasLimit: 1000000 }
+        );
+        const receipt = await tx.wait();
+        log("✅ Confirmed: " + receipt.transactionHash);
+        showInResults(tokenSymbol, "QuickSwap", "SushiSwap", buyPrice, sellPrice, profitUsd, profitPct, receipt.transactionHash, true);
+        updateAllBalances();
+      } catch (e) {
+        log("⚠️ Trade failed: " + e.message);
+      }
+    };
+
+    //🟢 16. Wallet Connection
+    document.getElementById("connectWallet").onclick = async () => {
+      provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      signer = provider.getSigner();
+      const walletAddress = await signer.getAddress();
+      document.getElementById("wallet").textContent = walletAddress;
+      contract = new ethers.Contract(contractAddress, contractABI, signer);
+      log("✅ Wallet connected: " + walletAddress);
+      await updateAllBalances();
+    };
+
+    //🟢 17. Function: Update Balances
+    async function updateAllBalances() {
+      const usdc = new ethers.Contract("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", ["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)"], provider);
+      const decimals = await usdc.decimals();
+      const walletBal = await usdc.balanceOf(await signer.getAddress());
+      const contractBal = await usdc.balanceOf(contractAddress);
+      document.getElementById("walletBalance").textContent = (walletBal / 10 ** decimals).toFixed(4);
+      document.getElementById("contractBalance").textContent = (contractBal / 10 ** decimals).toFixed(4);
+      let html = '';
+      for (const [symbol, addr] of Object.entries(tokens)) {
+        const token = new ethers.Contract(addr, ["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)"], provider);
+        const bal = await token.balanceOf(contractAddress);
+        const dec = await token.decimals();
+        html += `<div class="token-balance">${symbol}: ${(bal / 10 ** dec).toFixed(4)}</div>`;
+      }
+      document.getElementById("tokenBalances").innerHTML = html;
+    }
+
+    //🟢 18. Button: Scan Now Click
+    document.getElementById("scanNow").onclick = () => {
+      clearInterval(scanIntervalId);
+      runBatch();
+      const interval = parseInt(document.getElementById("scanInterval").value) * 1000;
+      scanIntervalId = setInterval(runBatch, interval);
+    };
+
+//🟢19.
+
+//🟢 Enhanced runBatch with 4 routers and all buy/sell combinations
+async function runBatch() {
+  const autoTrade = document.getElementById("autoTradeToggle").checked;
+  const batchCount = parseInt(document.getElementById("batchCount").value);
+  const tokenKeys = Object.keys(tokens);
+  const routerNames = Object.keys(routers);
+  const amountInRaw = document.getElementById("tradeAmount").value;
+  const amountIn = ethers.utils.parseUnits(amountInRaw, 6); // USDC = 6 decimals
+
+  for (let i = 0; i < batchCount; i++) {
+    const tokenSymbol = tokenKeys[i % tokenKeys.length];
+    const tokenAddr = tokens[tokenSymbol];
+
+    try {
+      const tokenContract = new ethers.Contract(tokenAddr, [
+        "function decimals() view returns (uint8)"
+      ], provider);
+      const tokenDecimals = await tokenContract.decimals();
+
+      for (const buyName of routerNames) {
+        for (const sellName of routerNames) {
+          if (buyName === sellName) continue;
+
+          const buyRouter = routers[buyName];
+          const sellRouter = routers[sellName];
+
+          try {
+            // BUY: USDC → TOKEN
+            const buyAmounts = await getAmountsOut(
+              buyRouter,
+              amountIn,
+              ["0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", tokenAddr]
+            );
+            const tokenReceived = buyAmounts[1];
+
+            // SELL: TOKEN → USDC
+            const sellAmounts = await getAmountsOut(
+              sellRouter,
+              tokenReceived,
+              [tokenAddr, "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"]
+            );
+            const usdcBack = sellAmounts[1];
+
+            // Normalize values
+            const buyPrice = parseFloat(ethers.utils.formatUnits(tokenReceived, tokenDecimals));
+            const sellPrice = parseFloat(ethers.utils.formatUnits(usdcBack, 6));
+            const sentUsdc = parseFloat(ethers.utils.formatUnits(amountIn, 6));
+            const profitUsd = sellPrice - sentUsdc;
+            const profitPct = (profitUsd / sentUsdc) * 100;
+
+            showInResults(
+              `🚨 ${tokenSymbol}`,
+              buyName,
+              sellName,
+              buyPrice,
+              sellPrice,
+              profitUsd,
+              profitPct,
+              "-",
+              autoTrade
+            );
+
+            if (autoTrade && profitUsd > 0) {
+              await window.performArbitrage(tokenAddr, tokenSymbol, buyPrice, sellPrice, profitUsd, profitPct);
+            }
+
+          } catch (err) {
+            log(`⚠️ Skip ${tokenSymbol} ${buyName}->${sellName}: ${err.message}`);
+          }
+        }
+      }
+
+    } catch (e) {
+      log(`❌ Error scanning ${tokenSymbol}: ${e.message}`);
+    }
+  }
+}
+
+    //🟢 20. Function: Show Scan Results in Table
+    function showInResults(token, buyRouter, sellRouter, buyPrice, sellPrice, profitUsd, profitPct, status, traded) {
+      const row = document.createElement("tr");
+      if (profitUsd > 0) row.classList.add("profitable");
+      const tokenKey = token.replace("🚨 ", "");
+      const tokenAddr = tokens[tokenKey];
+      row.innerHTML = `
+        <td>${token}</td>
+        <td>${buyRouter}</td>
+        <td>${sellRouter}</td>
+        <td>${buyPrice.toFixed(4)}</td>
+        <td>${sellPrice.toFixed(4)}</td>
+        <td>${profitUsd.toFixed(4)}</td>
+        <td>${profitPct.toFixed(2)}%</td>
+        <td>${traded ? `✅ Success<br><a href='https://polygonscan.com/tx/${status}' target='_blank'>${status.slice(0, 8)}...</a>` : "Pending"}</td>
+        <td><button onclick="performArbitrage('${tokenAddr}', '${tokenKey}', ${buyPrice}, ${sellPrice}, ${profitUsd}, ${profitPct})">Trade Now</button></td>
+      `;
+      document.getElementById("results").prepend(row);
+    }
+
+    //🟢 21. Function: Log Utility
+    function log(msg) {
+      const logDiv = document.getElementById("log");
+      const ts = new Date().toLocaleTimeString();
+      logDiv.innerHTML = `[${ts}] ${msg}<br>` + logDiv.innerHTML;
+    }
+  </script>
+</body>
+</html>
